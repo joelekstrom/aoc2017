@@ -2,12 +2,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-
-typedef struct stack_frame {
-	int *memory;
-	int index;
-	struct stack_frame *previous_frame;
-} stack_frame;
+#include <stddef.h>
 
 #define is_equal_memory(A, B, S) (memcmp(A, B, sizeof(A[0]) * S) == 0)
 
@@ -27,12 +22,19 @@ void redistribute(int memory[], int length) {
 	}
 }
 
-stack_frame *equal_frame_in_stack(stack_frame *stack, int state[], int length) {
-	do {
-		if (is_equal_memory(stack->memory, state, length)) {
-			return stack;
+/**
+ Enumerate the stack downwards, comparing the initial `memory` to the `memory` on each frame.
+ If a match is found, the variable pointed to by frame_index on that frame is returned.
+ */
+int *find_equal_stack_frame(int *memory, int length, int *frame_index, ptrdiff_t frame_offset) {
+	ptrdiff_t memory_offset = frame_index - memory;
+	while (*frame_index > 1) {
+		frame_index -= frame_offset;
+		int *stack_frame_memory = frame_index - memory_offset;
+		if (is_equal_memory(memory, stack_frame_memory, length)) {
+			return frame_index;
 		}
-	} while ((stack = stack->previous_frame));
+	}
 	return NULL;
 }
 
@@ -41,18 +43,16 @@ typedef struct {
 	int loop_count;
 } result;
 
-result run(stack_frame frame, int length) {
+result run(int *previous_memory, int length, int steps) {
 	int memory[length];
-	memcpy(memory, frame.memory, length * 4);
+	memcpy(memory, previous_memory, length * 4);
 	redistribute(memory, length);
 
-	stack_frame *equal_frame = equal_frame_in_stack(&frame, memory, length);
-	if (equal_frame) {
-		return (result){.step_count = frame.index, .loop_count = frame.index + 1 - equal_frame->index};
+	int *equal_frame_index = find_equal_stack_frame(memory, length, &steps, memory - previous_memory);
+	if (equal_frame_index) {
+		return (result){.step_count = steps, .loop_count = steps - *equal_frame_index};
 	}
-	
-	stack_frame next_frame = {.memory = memory, .previous_frame = &frame, .index = frame.index + 1};
-	return run(next_frame, length);
+	return run(&memory[0], length, steps + 1);
 }
 
 int main(int argc, char **argv) {
@@ -64,8 +64,7 @@ int main(int argc, char **argv) {
 		memory_bank[i] = atoi(argv[i]);
 	}
 
-	stack_frame frame = {.memory = memory_bank, .previous_frame = NULL, .index = 1};
-	result result = run(frame, argc);
+	result result = run(memory_bank, argc, 1);
 	printf("number of steps to redistribute: %i\n"
 		   "number of loops to reach same state again: %i\n", result.step_count, result.loop_count);
 }
